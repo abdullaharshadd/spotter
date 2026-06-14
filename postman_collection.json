@@ -1,0 +1,44 @@
+{
+  "info": {
+    "name": "Spotter - Route & Fuel Stop Planner",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Long route (multiple fuel stops) - LA to Chicago",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "http://127.0.0.1:8000/api/route/", "host": ["127", "0", "0", "1"], "port": "8000", "path": ["api", "route", ""] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"Los Angeles, CA\",\n  \"finish\": \"Chicago, IL\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Short route (no fuel stops needed) - Dallas to Houston",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "http://127.0.0.1:8000/api/route/", "host": ["127", "0", "0", "1"], "port": "8000", "path": ["api", "route", ""] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"Dallas, TX\",\n  \"finish\": \"Houston, TX\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Invalid location (400 error)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "http://127.0.0.1:8000/api/route/", "host": ["127", "0", "0", "1"], "port": "8000", "path": ["api", "route", ""] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"start\": \"Asdkjfhasdkjfh\",\n  \"finish\": \"Chicago, IL\"\n}"
+        }
+      }
+    }
+  ]
+}

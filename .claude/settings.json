@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__yith-archive__yith_search",
+      "Bash(python3 -c \"import django; print\\(django.__version__\\)\")",
+      "Bash(mkdir -p /Users/mac/projects/spotter/routing/management/commands && touch /Users/mac/projects/spotter/routing/management/__init__.py /Users/mac/projects/spotter/routing/management/commands/__init__.py && mkdir -p /Users/mac/projects/spotter/routing/data && cp /Users/mac/Downloads/fuel-prices-for-be-assessment.csv /Users/mac/projects/spotter/routing/data/fuel_prices.csv && ls /Users/mac/projects/spotter/routing/data)",
+      "Bash(curl -sL -o gaz_places.zip \"https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2023_Gazetteer/2023_Gaz_place_national.zip\")",
+      "Bash(unzip -o gaz_places.zip -d gaz_places)",
+      "Bash(python3 -c ' *)",
+      "Bash(curl -s -X POST http://127.0.0.1:8000/api/route/ -H 'Content-Type: application/json' -d '{\"start\": \"Los Angeles, CA\", \"finish\": \"Chicago, IL\"}' -o /tmp/route_response.json -w 'HTTP %{http_code}, time %{time_total}s\\\\n')",
+      "Bash(curl -s \"https://nominatim.openstreetmap.org/search?q=Los+Angeles%2C+CA&country=USA&format=json&limit=1\" -H \"User-Agent: test/1.0\")",
+      "Bash(curl -s \"https://nominatim.openstreetmap.org/search?q=Los+Angeles%2C+CA&format=json&limit=1\" -H \"User-Agent: test/1.0\")",
+      "Bash(curl -s \"https://nominatim.openstreetmap.org/search?q=Los+Angeles%2C+CA&countrycodes=us&format=json&limit=1\" -H \"User-Agent: test/1.0\")",
+      "Bash(kill %1)",
+      "Bash(kill 80879 80032)"
+    ],
+    "additionalDirectories": [
+      "/Users/mac/Downloads"
+    ]
+  }
+}

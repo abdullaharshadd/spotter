@@ -5,6 +5,7 @@ from routing.services.route_planner import (
     FuelStop,
     build_route_points,
     compute_fuel_cost,
+    find_reference_price,
     haversine_miles,
     plan_fuel_stops,
 )
@@ -94,3 +95,77 @@ class RoutePlannerTests(TestCase):
         result = compute_fuel_cost(100.0, [], reference_station=None)
         self.assertEqual(result["total_gallons"], 10.0)
         self.assertIsNone(result["total_cost"])
+
+
+def make_station(opis_id, price, lat, lon):
+    return FuelStation.objects.create(
+        opis_id=opis_id,
+        name=f"Station {opis_id}",
+        address="addr",
+        city="X",
+        state="KS",
+        rack_id=1,
+        retail_price=price,
+        latitude=lat,
+        longitude=lon,
+    )
+
+
+class MultiStopPlannerTests(TestCase):
+    def setUp(self):
+        # ~1,300 mile route due east along latitude 39.0.
+        self.coordinates = make_straight_line_coordinates(
+            -110.0, 39.0, -85.0, 39.0, 600
+        )
+        self.points = build_route_points(self.coordinates)
+        self.total_distance = self.points[-1].cumulative_miles
+
+    def _point_at(self, mile):
+        return next(p for p in self.points if p.cumulative_miles >= mile)
+
+    def test_long_route_gets_a_stop_every_tank(self):
+        for i, mile in enumerate((470, 940), start=1):
+            point = self._point_at(mile)
+            make_station(i, "3.500", point.lat, point.lon)
+
+        stops = plan_fuel_stops(self.coordinates, self.total_distance)
+
+        self.assertEqual(len(stops), 2)
+        self.assertLess(stops[0].mile_marker, 500)
+        self.assertLessEqual(stops[1].mile_marker - stops[0].mile_marker, 500)
+
+    def test_station_outside_corridor_is_ignored(self):
+        point = self._point_at(470)
+        # ~35 miles north of the route, well outside the 5 mile corridor.
+        make_station(1, "1.000", point.lat + 0.5, point.lon)
+
+        self.assertEqual(plan_fuel_stops(self.coordinates, self.total_distance), [])
+
+    def test_cost_prices_each_leg_at_the_fill_up_that_begins_it(self):
+        first = make_station(1, "2.000", 39.0, -100.0)
+        second = make_station(2, "4.000", 39.0, -95.0)
+        stops = [
+            FuelStop(station=first, mile_marker=400.0, distance_from_route_miles=0),
+            FuelStop(station=second, mile_marker=800.0, distance_from_route_miles=0),
+        ]
+
+        result = compute_fuel_cost(1000.0, stops)
+
+        # 0-400 and 400-800 at $2 (40 gal each), 800-1000 at $4 (20 gal).
+        self.assertEqual(result["total_gallons"], 100.0)
+        self.assertEqual(result["total_cost"], 240.0)
+
+
+class FindReferencePriceTests(TestCase):
+    def test_returns_cheapest_station_near_route_start(self):
+        make_station(1, "4.000", 39.0, -98.0)
+        cheaper = make_station(2, "3.000", 39.01, -98.0)
+        make_station(3, "1.000", 39.0, -90.0)  # cheap, but far from the start
+        coords = make_straight_line_coordinates(-98.0, 39.0, -97.0, 39.0, 10)
+
+        self.assertEqual(find_reference_price(coords), cheaper)
+
+    def test_returns_none_when_no_station_near_start(self):
+        coords = make_straight_line_coordinates(-98.0, 39.0, -97.0, 39.0, 10)
+
+        self.assertIsNone(find_reference_price(coords))

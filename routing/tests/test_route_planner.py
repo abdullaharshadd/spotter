@@ -1,27 +1,15 @@
-from unittest.mock import patch
-
 from django.test import TestCase
-from django.urls import reverse
 
 from routing.models import FuelStation
 from routing.services.route_planner import (
+    FuelStop,
     build_route_points,
     compute_fuel_cost,
+    find_reference_price,
     haversine_miles,
     plan_fuel_stops,
 )
-
-
-def make_straight_line_coordinates(start_lon, start_lat, end_lon, end_lat, num_points):
-    """Generate evenly spaced [lon, lat] points along a straight line, used to
-    build synthetic OSRM-style route geometry for tests."""
-    coords = []
-    for i in range(num_points):
-        t = i / (num_points - 1)
-        lon = start_lon + (end_lon - start_lon) * t
-        lat = start_lat + (end_lat - start_lat) * t
-        coords.append([lon, lat])
-    return coords
+from routing.tests.helpers import make_straight_line_coordinates
 
 
 class HaversineTests(TestCase):
@@ -82,8 +70,6 @@ class RoutePlannerTests(TestCase):
 
     def test_compute_fuel_cost_prices_first_leg_at_first_stop(self):
         # Total distance 100 miles, mpg = 10 -> 10 gallons.
-        from routing.services.route_planner import FuelStop
-
         station = FuelStation.objects.create(
             opis_id=3,
             name="Stop",
@@ -111,77 +97,87 @@ class RoutePlannerTests(TestCase):
         self.assertIsNone(result["total_cost"])
 
 
-class RouteWithFuelStopsViewTests(TestCase):
+def make_station(opis_id, price, lat, lon):
+    return FuelStation.objects.create(
+        opis_id=opis_id,
+        name=f"Station {opis_id}",
+        address="addr",
+        city="X",
+        state="KS",
+        rack_id=1,
+        retail_price=price,
+        latitude=lat,
+        longitude=lon,
+    )
+
+
+class MultiStopPlannerTests(TestCase):
     def setUp(self):
-        self.url = reverse("route-with-fuel-stops")
-        self.coordinates = make_straight_line_coordinates(-98.0, 39.0, -88.0, 39.0, 200)
+        # ~1,300 mile route due east along latitude 39.0.
+        self.coordinates = make_straight_line_coordinates(
+            -110.0, 39.0, -85.0, 39.0, 600
+        )
         self.points = build_route_points(self.coordinates)
         self.total_distance = self.points[-1].cumulative_miles
 
-        mile_300_point = next(p for p in self.points if p.cumulative_miles >= 300)
-        FuelStation.objects.create(
-            opis_id=1,
-            name="Midway Fuel",
-            address="addr",
-            city="A",
-            state="KS",
-            rack_id=1,
-            retail_price="3.500",
-            latitude=mile_300_point.lat,
-            longitude=mile_300_point.lon,
-        )
+    def _point_at(self, mile):
+        return next(p for p in self.points if p.cumulative_miles >= mile)
 
-    def _mock_route_response(self):
-        return {
-            "code": "Ok",
-            "routes": [
-                {
-                    "distance": self.total_distance * 1609.344,
-                    "duration": 5 * 3600,
-                    "geometry": {"type": "LineString", "coordinates": self.coordinates},
-                }
-            ],
-        }
+    def test_long_route_gets_a_stop_every_tank(self):
+        for i, mile in enumerate((470, 940), start=1):
+            point = self._point_at(mile)
+            make_station(i, "3.500", point.lat, point.lon)
 
-    @patch("routing.views.get_route")
-    @patch("routing.views.geocode_location")
-    def test_post_returns_route_and_fuel_stops(self, mock_geocode, mock_get_route):
-        mock_geocode.side_effect = [(39.0, -98.0), (39.0, -88.0)]
-        mock_get_route.return_value = {
-            "distance_miles": self.total_distance,
-            "duration_seconds": 5 * 3600,
-            "geometry": {"type": "LineString", "coordinates": self.coordinates},
-            "coordinates": self.coordinates,
-        }
+        stops = plan_fuel_stops(self.coordinates, self.total_distance)
 
-        response = self.client.post(
-            self.url,
-            data={"start": "Start, KS", "finish": "Finish, KS"},
-            content_type="application/json",
-        )
+        self.assertEqual(len(stops), 2)
+        self.assertLess(stops[0].mile_marker, 500)
+        self.assertLessEqual(stops[1].mile_marker - stops[0].mile_marker, 500)
 
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertIn("route_geometry", data)
-        self.assertEqual(len(data["fuel_stops"]), 1)
-        self.assertEqual(data["fuel_stops"][0]["name"], "Midway Fuel")
-        self.assertIsNotNone(data["total_fuel_cost_usd"])
-        self.assertGreater(data["total_gallons"], 0)
+    def test_station_outside_corridor_is_ignored(self):
+        point = self._point_at(470)
+        # ~35 miles north of the route, well outside the 5 mile corridor.
+        make_station(1, "1.000", point.lat + 0.5, point.lon)
 
-    @patch("routing.views.geocode_location")
-    def test_post_returns_400_for_unresolvable_location(self, mock_geocode):
-        from routing.services.geocoding import GeocodingError
+        self.assertEqual(plan_fuel_stops(self.coordinates, self.total_distance), [])
 
-        mock_geocode.side_effect = GeocodingError("not found")
+    def test_falls_back_to_earlier_station_when_trigger_window_is_empty(self):
+        point = self._point_at(200)
+        make_station(1, "3.000", point.lat, point.lon)
 
-        response = self.client.post(
-            self.url,
-            data={"start": "Nowhereville", "finish": "Finish, KS"},
-            content_type="application/json",
-        )
+        stops = plan_fuel_stops(self.coordinates, self.total_distance)
 
-        self.assertEqual(response.status_code, 400)
+        # Used to loop forever re-picking this station: with nothing further
+        # along the route, planning must end after the single stop.
+        self.assertEqual(len(stops), 1)
+        self.assertEqual(stops[0].station.opis_id, 1)
+        self.assertAlmostEqual(stops[0].mile_marker, 200, delta=5)
 
-    def test_post_requires_start_and_finish(self):
-        response = self.client.post(self.url, data={}, content_type="application/json")
-        self.assertEqual(response.status_code, 400)
+    def test_cost_prices_each_leg_at_the_fill_up_that_begins_it(self):
+        first = make_station(1, "2.000", 39.0, -100.0)
+        second = make_station(2, "4.000", 39.0, -95.0)
+        stops = [
+            FuelStop(station=first, mile_marker=400.0, distance_from_route_miles=0),
+            FuelStop(station=second, mile_marker=800.0, distance_from_route_miles=0),
+        ]
+
+        result = compute_fuel_cost(1000.0, stops)
+
+        # 0-400 and 400-800 at $2 (40 gal each), 800-1000 at $4 (20 gal).
+        self.assertEqual(result["total_gallons"], 100.0)
+        self.assertEqual(result["total_cost"], 240.0)
+
+
+class FindReferencePriceTests(TestCase):
+    def test_returns_cheapest_station_near_route_start(self):
+        make_station(1, "4.000", 39.0, -98.0)
+        cheaper = make_station(2, "3.000", 39.01, -98.0)
+        make_station(3, "1.000", 39.0, -90.0)  # cheap, but far from the start
+        coords = make_straight_line_coordinates(-98.0, 39.0, -97.0, 39.0, 10)
+
+        self.assertEqual(find_reference_price(coords), cheaper)
+
+    def test_returns_none_when_no_station_near_start(self):
+        coords = make_straight_line_coordinates(-98.0, 39.0, -97.0, 39.0, 10)
+
+        self.assertIsNone(find_reference_price(coords))

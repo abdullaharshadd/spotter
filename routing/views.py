@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.db import DatabaseError, connection
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -91,3 +92,17 @@ class RouteWithFuelStopsView(APIView):
 
         serializer = RouteResponseSerializer(payload)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class HealthView(APIView):
+    """Liveness/readiness probe: 200 when the app and its database respond."""
+
+    def get(self, request):
+        try:
+            connection.ensure_connection()
+        except DatabaseError:
+            return Response(
+                {"status": "error", "database": "unavailable"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        return Response({"status": "ok", "database": "ok"})

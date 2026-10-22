@@ -6,7 +6,7 @@ asgiref==3.12.1
 certifi==2026.10.19
 charset-normalizer==3.5.2
 Django==5.2.15
-djangorestframework==3.17.1
+djangorestframework==3.18.3
 idna==3.20
 requests==2.34.2
 sqlparse==0.6.0

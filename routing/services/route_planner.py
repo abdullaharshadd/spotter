@@ -78,7 +78,10 @@ def _candidate_stations_near(point: RoutePoint, radius_miles: float):
 
 
 def _cheapest_station_in_window(
-    points: list[RoutePoint], window_start_idx: int, window_end_idx: int
+    points: list[RoutePoint],
+    window_start_idx: int,
+    window_end_idx: int,
+    exclude_station_id: int | None = None,
 ):
     """Find the cheapest fuel station within the corridor around the route
     segment spanning points[window_start_idx:window_end_idx + 1].
@@ -93,6 +96,8 @@ def _cheapest_station_in_window(
     for idx in range(window_start_idx, window_end_idx + 1):
         point = points[idx]
         for station in _candidate_stations_near(point, corridor):
+            if station.pk == exclude_station_id:
+                continue
             dist = haversine_miles(
                 (point.lat, point.lon), (station.latitude, station.longitude)
             )
@@ -143,11 +148,18 @@ def plan_fuel_stops(
         if stop is None:
             # No station found within the corridor in the safe window; widen
             # the search to the full reachable range as a fallback.
+            # The window starts at the last fill-up, so skip that station or
+            # it is picked again and the loop never advances.
             full_start_idx = _index_for_mile(points, last_stop_mile)
-            stop = _cheapest_station_in_window(points, full_start_idx, end_idx)
+            stop = _cheapest_station_in_window(
+                points,
+                full_start_idx,
+                end_idx,
+                exclude_station_id=stops[-1].station.pk if stops else None,
+            )
 
-        if stop is None:
-            # Nothing reachable along the corridor at all; stop planning
+        if stop is None or stop.mile_marker <= last_stop_mile:
+            # Nothing reachable further along the corridor; stop planning
             # further stops rather than producing an unreachable plan.
             break
 

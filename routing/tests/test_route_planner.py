@@ -141,6 +141,18 @@ class MultiStopPlannerTests(TestCase):
 
         self.assertEqual(plan_fuel_stops(self.coordinates, self.total_distance), [])
 
+    def test_falls_back_to_earlier_station_when_trigger_window_is_empty(self):
+        point = self._point_at(200)
+        make_station(1, "3.000", point.lat, point.lon)
+
+        stops = plan_fuel_stops(self.coordinates, self.total_distance)
+
+        # Used to loop forever re-picking this station: with nothing further
+        # along the route, planning must end after the single stop.
+        self.assertEqual(len(stops), 1)
+        self.assertEqual(stops[0].station.opis_id, 1)
+        self.assertAlmostEqual(stops[0].mile_marker, 200, delta=5)
+
     def test_cost_prices_each_leg_at_the_fill_up_that_begins_it(self):
         first = make_station(1, "2.000", 39.0, -100.0)
         second = make_station(2, "4.000", 39.0, -95.0)

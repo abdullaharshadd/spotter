@@ -1,0 +1,11 @@
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+extend-exclude = ["routing/migrations"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "DJ"]
+
+[tool.ruff.lint.per-file-ignores]
+# Django's generated password-validator paths can't be wrapped.
+"config/settings.py" = ["E501"]

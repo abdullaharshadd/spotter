@@ -1,5 +1,7 @@
 # Spotter — Route & Fuel Stop Planner API
 
+![CI](https://github.com/abdullaharshadd/spotter/actions/workflows/ci.yml/badge.svg)
+
 A Django + DRF API that plans a driving route between two USA locations and
 returns the cheapest fuel stops needed along the way, plus the total
 estimated fuel cost.
@@ -28,15 +30,34 @@ local DB/CPU work.
 
 ## Setup
 
+### With Docker (quickest)
+
+```bash
+cp .env.example .env    # optional; every value has a default
+docker compose up --build
+curl http://localhost:8000/api/health/
+```
+
+The container runs migrations and loads the fuel stations on start, then
+serves the API on port 8000. The repo is mounted into the container, so code
+edits reload the server.
+
+### Local (Python 3.11+)
+
 ```bash
 python3 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt   # pinned runtime deps + coverage + ruff
 
 python manage.py migrate
 python manage.py load_fuel_prices   # one-time: load + geocode fuel stations
 python manage.py runserver
 ```
+
+`requirements.txt` lists the direct dependencies; `requirements-lock.txt`
+pins every transitive version and is what Docker and CI install. Settings are
+read from environment variables (see `.env.example`); Docker Compose loads
+`.env` automatically, for a local run export them in your shell.
 
 The `load_fuel_prices` command:
 - Loads all rows from `routing/data/fuel_prices.csv`.
@@ -48,6 +69,11 @@ The `load_fuel_prices` command:
   network calls.
 
 ## API
+
+### `GET /api/health/`
+
+Returns `{"status": "ok", "database": "ok"}` with 200, or 503 if the database
+is unreachable. Suitable as a container liveness/readiness probe.
 
 ### `POST /api/route/`
 
@@ -88,6 +114,9 @@ The `load_fuel_prices` command:
 `route_geometry` is a standard GeoJSON `LineString` and can be plotted
 directly on any map (Leaflet, Mapbox GL, Google Maps polyline, etc.).
 
+Errors: `400` for invalid input or a location that can't be geocoded, `502`
+if the routing service fails. Both return `{"error": "..."}`.
+
 ## Configuration
 
 Tunable assumptions live in `config/settings.py`:
@@ -99,13 +128,33 @@ Tunable assumptions live in `config/settings.py`:
 | `VEHICLE_RANGE_BUFFER_MILES` | 50 | Safety margin before triggering a refuel search |
 | `FUEL_STATION_CORRIDOR_MILES` | 5 | Max distance a station may be from the route to be considered |
 
-## Tests
+Environment variables (all optional, see `.env.example`):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `DJANGO_SECRET_KEY` | insecure dev key | Set this anywhere outside local dev |
+| `DJANGO_DEBUG` | `True` | |
+| `DJANGO_ALLOWED_HOSTS` | `*` | Comma-separated |
+| `DJANGO_LOG_LEVEL` | `INFO` | Logs go to stdout as `key=value` lines |
+| `OSRM_BASE_URL` | public OSRM server | |
+| `NOMINATIM_BASE_URL` | public Nominatim server | |
+
+## Tests and linting
 
 ```bash
-python manage.py test
+python manage.py test                           # run the suite
+coverage run manage.py test && coverage report  # with coverage (fails under 90%)
+ruff check . && ruff format --check .           # lint + format check
 ```
 
-Tests cover the haversine distance helper, the fuel-stop planning algorithm
-(short routes need no stops, long routes pick the cheapest in-corridor
-station), the cost calculation, and the API view (mocking the external
-geocoding/routing calls so tests run fully offline).
+Tests live in `routing/tests/` and run fully offline: geocoding, routing and
+Nominatim calls are mocked. They cover the haversine helper, fuel-stop
+planning (single and multi-stop routes, corridor filtering, the fallback
+when no station is in the refuel window), cost calculation, the geocoding and
+OSRM clients' error handling, the `load_fuel_prices` command, and the API
+views.
+
+CI (`.github/workflows/ci.yml`) runs lint, `manage.py check`, a missing-
+migrations check and the tests with coverage on every push and pull request,
+plus a `pip-audit` scan of the pinned dependencies. Dependabot opens weekly
+update PRs for pip packages and GitHub Actions.

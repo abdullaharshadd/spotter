@@ -43,6 +43,21 @@ class GeocodeLocationTests(SimpleTestCase):
             geocode_location("Chicago, IL")
 
     @patch("routing.services.geocoding.requests.get")
+    def test_http_error_is_logged_with_query_and_status(self, mock_get):
+        mock_get.return_value = fake_response(
+            status_error=requests.HTTPError("503", response=MagicMock(status_code=503))
+        )
+
+        with (
+            self.assertLogs("routing.services.geocoding", "WARNING") as logs,
+            self.assertRaises(GeocodingError),
+        ):
+            geocode_location("Chicago, IL")
+
+        self.assertIn("query='Chicago, IL'", logs.output[0])
+        self.assertIn("status=503", logs.output[0])
+
+    @patch("routing.services.geocoding.requests.get")
     def test_network_error_raises(self, mock_get):
         mock_get.side_effect = requests.ConnectionError("connection refused")
 
@@ -98,6 +113,19 @@ class GetRouteTests(SimpleTestCase):
 
         with self.assertRaisesMessage(RoutingError, "Routing service error"):
             get_route((41.9, -87.6), (38.6, -90.2))
+
+    @patch("routing.services.osrm.requests.get")
+    def test_failures_are_logged_with_coords_and_status(self, mock_get):
+        mock_get.return_value = fake_response({"code": "NoRoute", "routes": []})
+
+        with (
+            self.assertLogs("routing.services.osrm", "WARNING") as logs,
+            self.assertRaises(RoutingError),
+        ):
+            get_route((41.9, -87.6), (21.3, -157.8))
+
+        self.assertIn("coords=-87.6,41.9;-157.8,21.3", logs.output[0])
+        self.assertIn("code=NoRoute", logs.output[0])
 
     @patch("routing.services.osrm.requests.get")
     def test_timeout_raises(self, mock_get):

@@ -124,3 +124,28 @@ OSRM_BASE_URL = os.environ.get("OSRM_BASE_URL", "https://router.project-osrm.org
 NOMINATIM_BASE_URL = os.environ.get(
     "NOMINATIM_BASE_URL", "https://nominatim.openstreetmap.org"
 )
+
+# Logs go to stdout as one key=value line per record so they can be collected
+# by Docker / any log shipper without extra dependencies.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "keyvalue": {
+            "format": (
+                "time=%(asctime)s level=%(levelname)s logger=%(name)s msg=%(message)s"
+            ),
+        },
+    },
+    "handlers": {
+        "stdout": {
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stdout",
+            "formatter": "keyvalue",
+        },
+    },
+    "root": {
+        "handlers": ["stdout"],
+        "level": os.environ.get("DJANGO_LOG_LEVEL", "INFO"),
+    },
+}

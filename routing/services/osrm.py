@@ -1,7 +1,11 @@
 """Client for the free OSRM public routing API (no API key required)."""
 
+import logging
+
 import requests
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 
 class RoutingError(Exception):
@@ -35,10 +39,17 @@ def get_route(start: tuple[float, float], end: tuple[float, float]) -> dict:
         )
         resp.raise_for_status()
     except requests.RequestException as exc:
+        status = getattr(exc.response, "status_code", None)
+        logger.warning(
+            "routing request failed coords=%s status=%s error=%s", coords, status, exc
+        )
         raise RoutingError(f"Routing service error: {exc}") from exc
 
     data = resp.json()
     if data.get("code") != "Ok" or not data.get("routes"):
+        logger.warning(
+            "routing returned no route coords=%s code=%s", coords, data.get("code")
+        )
         raise RoutingError(f"Routing service returned no route: {data.get('code')}")
 
     route = data["routes"][0]

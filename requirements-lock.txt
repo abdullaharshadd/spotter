@@ -3,7 +3,7 @@
 #   python -m venv /tmp/lock && /tmp/lock/bin/pip install -r requirements.txt \
 #     && /tmp/lock/bin/pip freeze > requirements-lock.txt
 asgiref==3.12.1
-certifi==2026.10.19
+certifi==2026.10.23
 charset-normalizer==3.5.2
 Django==5.2.15
 djangorestframework==3.17.1

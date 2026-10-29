@@ -2,7 +2,7 @@
 # Regenerate after changing requirements.txt:
 #   python -m venv /tmp/lock && /tmp/lock/bin/pip install -r requirements.txt \
 #     && /tmp/lock/bin/pip freeze > requirements-lock.txt
-asgiref==3.12.1
+asgiref==3.13.0
 certifi==2026.10.19
 charset-normalizer==3.5.2
 Django==5.2.15
